@@ -4,60 +4,69 @@ phases:
 
   install:
     commands:
-      - echo "Checking AWS credentials..."
-      - aws sts get-caller-identity
-      - aws s3 ls s3://$ARTIFACT_BUCKET
 
-      - echo "Installing NVM and Node.js"
-      - curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh | bash
-      - export NVM_DIR="$HOME/.nvm"
-      - . "$NVM_DIR/nvm.sh"
-      - nvm install $NODE_VERSION
-      - nvm use $NODE_VERSION
-      - nvm install $NODE_VERSION
-      - nvm use $NODE_VERSION
-      - node -v
-      - npm -v
+      - |
+        echo "Checking AWS credentials..."
+        aws sts get-caller-identity
+        aws s3 ls s3://$ARTIFACT_BUCKET
 
-      - echo "Installing npm dependencies..."
-      - npm ci
+      - |
+        echo "Installing NVM and Node.js"
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        nvm install $NODE_VERSION
+        nvm use $NODE_VERSION
+        nvm install $NODE_VERSION
+        nvm use $NODE_VERSION
+        node -v
+        npm -v
+
+      - |
+        echo "Installing npm dependencies..."
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        nvm use $NODE_VERSION
+        npm ci
 
   build:
     commands:
-      - echo Build started on  `date`
+  
+      - |
+        echo Build started on  `date`
+        export VERSION=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}@$CODEBUILD_SOURCE_VERSION
+        export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
+        export ARCH=$(uname -m)
+        export OS=linux
+        echo Artifact => $ARTIFACT_NAME
 
-      - export VERSION=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}@$CODEBUILD_SOURCE_VERSION
-      - export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
-      - export ARCH=$(uname -m)
-      - export OS=linux
-      - echo Artifact => $ARTIFACT_NAME
+        echo Build code-server ===>
+        time npm run build
+        echo <====================
 
-      - echo Build code-server ===>
-      - time npm run build
-      - echo <====================
+        echo Build vscode ===>
+        time npm run build:vscode
+        echo <====================
 
-      - echo Build vscode ===>
-      - time npm run build:vscode
-      - echo <====================
-
-      - echo Build release package ===>
-      - time npm run release
-      - time npm run release:standalone
-      - time npm run test:integration
-      - time npm run package
-      - echo <=========================
+        echo Build release package ===>
+        time npm run release
+        time npm run release:standalone
+        time npm run test:integration
+        time npm run package
+        echo <=========================
 
   post_build:
     commands:
 
-      - echo Uploading artifact ===>
-      - S3_KEY="$ARTIFACT_PREFIX/$ARTIFACT_NAME"
-      - echo "Uploading $S3_KEY to S3..."
-      - aws s3 cp $ARTIFACT_NAME.zip s3://$ARTIFACT_BUCKET/$S3_KEY
-      - echo <======================
-
-      - echo Pruning old artifacts ===>
       - |
+        echo Uploading artifact ===>
+        S3_KEY="$ARTIFACT_PREFIX/$ARTIFACT_NAME"
+        echo "Uploading $S3_KEY to S3..."
+        aws s3 cp $ARTIFACT_NAME.zip s3://$ARTIFACT_BUCKET/$S3_KEY
+        echo <======================
+
+      - |
+        echo Pruning old artifacts ===>
         (
           set -euo pipefail
           echo "Keeping last $MAX_ARTIFACTS artifacts in s3://$BUCKET_NAME/$ARTIFACT_PREFIX"
@@ -83,4 +92,4 @@ phases:
             echo "No pruning needed."
           fi
         ) || echo "⚠️ Artifact pruning failed 
-      - echo <=========================
+        echo <=========================
