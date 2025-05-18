@@ -6,12 +6,20 @@ phases:
     commands:
 
       - |
-        echo "Checking AWS credentials..."
+        echo "Checking AWS credentials ===>"
         aws sts get-caller-identity
         aws s3 ls s3://$ARTIFACT_BUCKET
+        echo "<============================"
 
       - |
-        echo "Installing NVM and Node.js"
+        echo "Installing base dependencies ===>"
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y curl git libxkbfile-dev time
+        echo "<================================"
+
+      - |
+        echo "Installing NVM and Node.js ===>"
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh | bash
         export NVM_DIR="$HOME/.nvm"
         . "$NVM_DIR/nvm.sh"
@@ -21,52 +29,59 @@ phases:
         nvm use $NODE_VERSION
         node -v
         npm -v
+        echo "<=============================="
 
       - |
-        echo "Installing npm dependencies..."
+        echo "Installing code-server dependencies ===>"
         export NVM_DIR="$HOME/.nvm"
         . "$NVM_DIR/nvm.sh"
         nvm use $NODE_VERSION
         npm ci
+        echo "<======================================="
 
   build:
     commands:
   
       - |
         echo Build started on  `date`
+
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        nvm use $NODE_VERSION
+
         export VERSION=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}@$CODEBUILD_SOURCE_VERSION
         export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
         export ARCH=$(uname -m)
         export OS=linux
         echo Artifact => $ARTIFACT_NAME
 
-        echo Build code-server ===>
+        echo "Build code-server ===>"
         time npm run build
-        echo <====================
+        echo "<====================="
 
-        echo Build vscode ===>
+        echo "Build vscode ===>"
         time npm run build:vscode
-        echo <====================
+        echo "<====================="
 
-        echo Build release package ===>
+        echo "Build release package ===>"
         time npm run release
         time npm run release:standalone
         time npm run test:integration
         time npm run package
-        echo <=========================
+        echo "<=========================="
 
   post_build:
     commands:
 
       - |
-        echo Uploading artifact ===>
+        echo "Uploading artifact ===>"
         S3_KEY="$ARTIFACT_PREFIX/$ARTIFACT_NAME"
         echo "Uploading $S3_KEY to S3..."
         aws s3 cp $ARTIFACT_NAME.zip s3://$ARTIFACT_BUCKET/$S3_KEY
-        echo <======================
+        echo "<======================="
 
       - |
-        echo Pruning old artifacts ===>
+        echo "Pruning old artifacts ===>"
         (
           set -euo pipefail
           echo "Keeping last $MAX_ARTIFACTS artifacts in s3://$BUCKET_NAME/$ARTIFACT_PREFIX"
@@ -91,5 +106,5 @@ phases:
           else
             echo "No pruning needed."
           fi
-        ) || echo "⚠️ Artifact pruning failed 
-        echo <=========================
+        ) || echo "⚠️ Artifact pruning failed"
+        echo "<=========================="
