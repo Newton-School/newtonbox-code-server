@@ -53,7 +53,7 @@ phases:
         export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
         export ARCH=$(uname -m)
         export OS=linux
-        echo Artifact => $ARTIFACT_NAME
+        echo "Artifact => $ARTIFACT_NAME"
 
         echo "Build code-server ===>"
         time npm run build
