@@ -14,8 +14,11 @@ phases:
       - |
         echo "Installing base dependencies ===>"
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update -y
-        apt-get install -y curl git libxkbfile-dev time
+        apt-get update
+        apt-get install -y curl git libxkbfile-dev time ca-certifactes
+        echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' |  tee /etc/apt/sources.list.d/goreleaser.list
+        apt-get update
+        apt-get install -y nfpm
         echo "<================================"
 
       - |
@@ -75,13 +78,12 @@ phases:
         echo "Uploading artifact ===>"
         S3_KEY="$ARTIFACT_PREFIX/$ARTIFACT_NAME"
         echo "Uploading $S3_KEY to S3..."
-        aws s3 cp $ARTIFACT_NAME.zip s3://$ARTIFACT_BUCKET/$S3_KEY
+        aws s3 cp release-packages/$ARTIFACT_NAME s3://$ARTIFACT_BUCKET/$S3_KEY
         echo "<======================="
 
       - |
         echo "Pruning old artifacts ===>"
         (
-          set -euo pipefail
           echo "Keeping last $MAX_ARTIFACTS artifacts in s3://$BUCKET_NAME/$ARTIFACT_PREFIX"
 
           OBJECTS=$(aws s3api list-objects-v2 \
