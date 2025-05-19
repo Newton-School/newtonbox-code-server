@@ -15,7 +15,7 @@ phases:
         echo "Installing base dependencies ===>"
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y curl git libxkbfile-dev time ca-certifactes
+        apt-get install -y curl git libxkbfile-dev time ca-certificates
         echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' |  tee /etc/apt/sources.list.d/goreleaser.list
         apt-get update
         apt-get install -y nfpm
@@ -53,7 +53,7 @@ phases:
         nvm use $NODE_VERSION
 
         export VERSION=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}@$CODEBUILD_SOURCE_VERSION
-        export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
+        export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH.tar.gz
         echo "Artifact => $ARTIFACT_NAME"
 
         echo "Build code-server ===>"
