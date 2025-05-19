@@ -51,8 +51,6 @@ phases:
 
         export VERSION=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}@$CODEBUILD_SOURCE_VERSION
         export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
-        export ARCH=$(uname -m)
-        export OS=linux
         echo "Artifact => $ARTIFACT_NAME"
 
         echo "Build code-server ===>"
