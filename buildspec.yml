@@ -6,6 +6,17 @@ phases:
     commands:
 
       - |
+        echo "Enabling swap ===>"
+        fallocate -l 8G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+        free -h
+        swapon --show
+        echo "<================="
+
+      - |
         echo "Checking AWS credentials ===>"
         aws sts get-caller-identity
         aws s3 ls s3://$ARTIFACT_BUCKET
