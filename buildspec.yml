@@ -64,8 +64,9 @@ phases:
         nvm use $NODE_VERSION
 
         export VERSION=${CODEBUILD_WEBHOOK_HEAD_REF#refs/heads/}@$CODEBUILD_SOURCE_VERSION
-        export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH.tar.gz
-        echo "Artifact => $ARTIFACT_NAME"
+        export ARTIFACT_NAME=code-server-$VERSION-linux-$ARCH
+        export ARTIFACT_FILE=$ARTIFACT_NAME.tar.gz
+        echo "Artifact => $ARTIFACT_FILE"
 
         echo "Build code-server ===>"
         time npm run build
@@ -82,15 +83,31 @@ phases:
         time npm run package
         echo "<=========================="
 
+    exported-variables:
+      - VERSION
+      - ARTIFACT_NAME
+      - ARTIFACT_FILE
+
   post_build:
     commands:
 
       - |
         echo "Uploading artifact ===>"
-        S3_KEY="$ARTIFACT_PREFIX/$ARTIFACT_NAME"
+        S3_KEY="$ARTIFACT_PREFIX/$ARTIFACT_FILE"
         echo "Uploading $S3_KEY to S3..."
-        aws s3 cp release-packages/$ARTIFACT_NAME s3://$ARTIFACT_BUCKET/$S3_KEY
+        aws s3 cp release-packages/$ARTIFACT_FILE s3://$ARTIFACT_BUCKET/$S3_KEY
         echo "<======================="
+
+      - |
+        echo "Extracting and uploading static files ===>"
+        TEMP_DIR=$(mktemp -d)
+        tar -xzf release-packages/$ARTIFACT_FILE -C $TEMP_DIR
+        STATIC_S3_KEY="$STATIC_ARTIFACT_PREFIX/stable-$CODEBUILD_SOURCE_VERSION/static"
+        SOURCE_DIR="$TEMP_DIR/$ARTIFACT_NAME/lib/vscode"
+        aws s3 cp $SOURCE_DIR/out s3://$ARTIFACT_BUCKET/$STATIC_S3_KEY/out --recursive
+        aws s3 cp $SOURCE_DIR/node_modules s3://$ARTIFACT_BUCKET/$STATIC_S3_KEY/node_modules --recursive
+        rm -rf $TEMP_DIR
+        echo "<=========================="
 
       - |
         echo "Pruning old artifacts ===>"
@@ -118,5 +135,88 @@ phases:
           else
             echo "No pruning needed."
           fi
-        ) || echo "⚠️ Artifact pruning failed"
+        ) || echo "Artifact pruning failed"
         echo "<============================"
+
+        - |
+          echo "Pruning old static artifacts ===>"
+          echo "Keeping last $MAX_ARTIFACTS artifacts in s3://$ARTIFACT_BUCKET/$STATIC_ARTIFACT_PREFIX"
+
+          OBJECTS=$(aws s3api list-objects-v2 \
+            --bucket "$ARTIFACT_BUCKET" \
+            --prefix "$STATIC_ARTIFACT_PREFIX/" \
+            --delimiter "/" \
+          | jq -r '.CommonPrefixes // [] | .[].Prefix' | while read -r prefix; do
+              aws s3api list-objects-v2 \
+                --bucket "$ARTIFACT_BUCKET" \
+                --prefix "$prefix" \
+                --max-items 1 \
+              | jq -r '.Contents[0].LastModified + " " + "'$prefix'"'
+            done | sort | cut -d' ' -f2-)
+
+          if [ -z "$OBJECTS" ]; then
+            echo "No artifacts found. Nothing to prune."
+            exit 0
+          fi
+
+          echo "Artifacts found =>"
+          echo "$OBJECTS"
+          echo "<==="
+
+          TOTAL_OBJECTS=$(echo "$OBJECTS" | wc -l)
+          echo "Total static artifacts found: $TOTAL_OBJECTS"
+
+          if (( TOTAL_OBJECTS > MAX_ARTIFACTS )); then
+            TO_DELETE=$(( TOTAL_OBJECTS - MAX_ARTIFACTS ))
+            echo "Pruning $TO_DELETE oldest static artifacts..."
+
+            for PREFIX in $(echo "$OBJECTS" | head -n $TO_DELETE); do
+              echo "Deleting folder: $PREFIX =>"
+
+              # List all objects in this prefix
+              OBJECT_KEYS=$(aws s3api list-objects-v2 \
+                --bucket "$ARTIFACT_BUCKET" \
+                --prefix "$PREFIX" \
+                | jq -r '.Contents // [] | .[].Key')
+
+              if [ -z "$OBJECT_KEYS" ]; then
+                echo "No objects found in $PREFIX — skipping."
+                continue
+              fi
+              NUM_OBJECT_KEYS=$(echo "$OBJECT_KEYS" | tr ' ' '\n' | wc -l)
+              echo "$NUM_OBJECT_KEYS files to delete"
+
+              # Delete in batches of 500
+              for ((i = 0; i < $NUM_OBJECT_KEYS; i += 500)); do
+                BATCH=$(echo "$OBJECT_KEYS" | head -n $((i + 500)) | tail -n 500)
+                BATCH_SIZE=$(echo "$BATCH" | tr ' ' '\n' | wc -l)
+                TEMP_FILE=$(mktemp)
+
+                echo "Deleting batch of $BATCH_SIZE objects from $PREFIX..."
+
+                {
+                  echo '{"Objects": ['
+                  j=0
+                  for obj in $BATCH; do
+                    if [[ $j -gt 0 ]]; then
+                      echo ","
+                    fi
+                    echo "{\"Key\": \"$obj\"}"
+                    j=$(( $j + 1 ))
+                  done
+                  echo '],"Quiet": true}'
+                } > "$TEMP_FILE"
+
+                aws s3api delete-objects \
+                  --bucket "$ARTIFACT_BUCKET" \
+                  --delete "file://$TEMP_FILE"
+                rm -f "$TEMP_FILE"
+              done
+
+              echo "<=== Deleted folder: $PREFIX"
+            done
+          else
+            echo "No pruning needed."
+          fi
+
+          echo "<============================"
