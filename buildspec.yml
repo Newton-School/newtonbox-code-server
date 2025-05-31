@@ -115,6 +115,7 @@ phases:
         SOURCE_DIR="$TEMP_DIR/$ARTIFACT_NAME"
         aws s3 cp $SOURCE_DIR/out s3://$ARTIFACT_BUCKET/$STATIC_S3_KEY/out --recursive
         aws s3 cp $SOURCE_DIR/node_modules s3://$ARTIFACT_BUCKET/$STATIC_S3_KEY/node_modules --recursive
+        aws s3 cp $SOURCE_DIR/src s3://$ARTIFACT_BUCKET/$STATIC_S3_KEY/src --recursive
         echo "<======================="
 
         rm -rf $TEMP_DIR
